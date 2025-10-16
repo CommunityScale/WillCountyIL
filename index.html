@@ -65,6 +65,17 @@
             font-weight: 700;
             margin-bottom: 0.5rem;
         }
+
+        /* Remove indentation from dropdown options */
+        #layer-select option,
+        #layer-select optgroup {
+            padding-left: 0;
+            margin-left: 0;
+        }
+
+        #layer-select optgroup option {
+            padding-left: 0;
+        }
     </style>
 </head>
 <body class="overflow-hidden">
@@ -83,7 +94,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </div>
-                    <select id="layer-select" class="w-full bg-white rounded pl-9 pr-3 py-2 text-sm focus:outline-none appearance-none">
+                    <select id="layer-select" class="w-full bg-white rounded pl-9 pr-8 py-2 text-sm focus:outline-none appearance-none border-0" style="box-shadow: none;">
                         <option value="" selected>Select data layer</option>
                         <option value="blank" hidden></option>
                         <optgroup label="Census Tract Data">
@@ -136,15 +147,15 @@
 
                 <!-- Basemap options -->
                 <div id="basemap-settings" class="hidden mt-2 space-y-3 text-sm text-black">
-                    <div id="basemap-style-thumbnails" class="flex gap-2" style="font-family: 'Roboto Condensed', sans-serif;">
+                    <div id="basemap-style-thumbnails" class="flex gap-2" style="font-family: 'Roboto', sans-serif;">
                         <button data-style="gray" class="flex-1 border border-white rounded p-1 hover:border-gray-400">
-                            <div class="aspect-video bg-gray-100 rounded text-xs flex items-center justify-center font-semibold">Gray</div>
+                            <div class="aspect-video bg-gray-100 rounded text-xs flex items-center justify-center">Gray</div>
                         </button>
                         <button data-style="satellite" class="flex-1 border border-white rounded p-1 hover:border-gray-400">
-                            <div class="aspect-video bg-gray-100 rounded text-xs flex items-center justify-center font-semibold">Aerial</div>
+                            <div class="aspect-video bg-gray-100 rounded text-xs flex items-center justify-center">Aerial</div>
                         </button>
                         <button data-style="lightSatellite" class="flex-1 border border-white rounded p-1 hover:border-gray-400">
-                            <div class="aspect-video bg-gray-100 rounded text-xs flex flex-col items-center justify-center font-semibold leading-tight">
+                            <div class="aspect-video bg-gray-100 rounded text-xs flex flex-col items-center justify-center leading-tight">
                                 <span>Light</span>
                                 <span>Aerial</span>
                             </div>
@@ -266,6 +277,7 @@
     let tractData = null;
     let zipData = null;
     let currentDataLayer = null;
+    let currentLayerName = null; // Store the layer name separately
 
     // Initial map settings (will be updated to fit county)
     let currentBasemap = 'gray';
@@ -610,6 +622,7 @@
         if (!layerType || !attribute) {
             document.getElementById('legend').classList.add('hidden');
             currentDataLayer = null;
+            currentLayerName = null; // Clear stored layer name
             // Hide tract outline when no data layer is selected
             if (map.getLayer('tracts-outline')) {
                 map.setLayoutProperty('tracts-outline', 'visibility', 'none');
@@ -861,10 +874,14 @@
         const legendContent = document.getElementById('legend-content');
         const legend = document.getElementById('legend');
 
-        // Get layer name from dropdown
-        const select = document.getElementById('layer-select');
-        const selectedOption = select.options[select.selectedIndex];
-        const layerName = selectedOption.text;
+        // Use stored layer name if available, otherwise get from dropdown
+        let layerName = currentLayerName;
+        if (!layerName) {
+            const select = document.getElementById('layer-select');
+            const selectedOption = select.options[select.selectedIndex];
+            layerName = selectedOption.text;
+            currentLayerName = layerName; // Store it for future use
+        }
 
         legendTitle.textContent = layerName;
         legendContent.innerHTML = '';
@@ -929,6 +946,10 @@
 
     function switchBasemap(newStyle) {
         currentBasemap = newStyle;
+
+        // Store current layer state before style change
+        const savedLayerState = currentDataLayer;
+
         map.setStyle(BASEMAP_STYLES[newStyle]);
 
         // Update button borders to show active state
@@ -1032,9 +1053,24 @@
                 .catch(error => console.error('Error re-adding zip layer after basemap change:', error));
 
             // Re-apply current data layer if one was selected
-            if (currentDataLayer) {
-                const [layerType, attribute] = currentDataLayer.split(':');
-                updateDataLayer(layerType, attribute);
+            console.log('Saved layer state:', savedLayerState);
+            if (savedLayerState) {
+                const [layerType, attribute] = savedLayerState.split(':');
+                console.log('Re-applying layer:', layerType, attribute);
+                // Small delay to ensure sources are loaded before re-applying layer
+                setTimeout(() => {
+                    console.log('About to call updateDataLayer');
+                    updateDataLayer(layerType, attribute);
+                    // Ensure legend stays visible and populated
+                    const legend = document.getElementById('legend');
+                    const legendTitle = document.getElementById('legend-title');
+                    console.log('Legend element:', legend);
+                    console.log('Legend title text:', legendTitle ? legendTitle.textContent : 'NO TITLE');
+                    legend.classList.remove('hidden');
+                    console.log('Legend should now be visible');
+                }, 300);
+            } else {
+                console.log('No saved layer state to restore');
             }
         });
     }
