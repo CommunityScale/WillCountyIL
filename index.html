@@ -166,8 +166,8 @@
     // ============================================
 
     // County of interest - change this to analyze a different county
-    const COUNTY_NAME = 'Cook County';
-    const COUNTY_GEOID = '17031';  // Cook County, IL GEOID (State FIPS 17 + County FIPS 031)
+    const COUNTY_NAME = 'Will County';
+    const COUNTY_GEOID = '17197';  // Will County, IL GEOID (State FIPS 17 + County FIPS 197)
     const STATE_NAME = 'Illinois';
 
     // Optional: Custom initial map view (leave null to auto-fit to county)
@@ -473,21 +473,11 @@
         const sourceData = layerType === 'zip' ? zipData : tractData;
         if (!sourceData) return null;
 
-        // Filter data for current county/state
-        let countyData;
-        if (layerType === 'zip') {
-            // For zip codes, use all state data (zip codes don't align with counties)
-            countyData = sourceData
-                .map(d => d[attribute])
-                .filter(v => v !== null && v !== undefined && !isNaN(v))
-                .sort((a, b) => a - b);
-        } else {
-            countyData = sourceData
-                .filter(d => d.geoid.startsWith(COUNTY_GEOID))
-                .map(d => d[attribute])
-                .filter(v => v !== null && v !== undefined && !isNaN(v))
-                .sort((a, b) => a - b);
-        }
+        // Use all data in the dataset for quantile calculation
+        const countyData = sourceData
+            .map(d => d[attribute])
+            .filter(v => v !== null && v !== undefined && !isNaN(v))
+            .sort((a, b) => a - b);
 
         if (countyData.length === 0) {
             console.warn('No data found for', layerType, attribute);
@@ -568,30 +558,48 @@
         }
 
         if (layerType === 'tract') {
-            // Handle tract data
-            const countyTracts = tractData.filter(d => d.geoid.startsWith(COUNTY_GEOID));
+            // Handle tract data - show all tracts in the dataset
+            const countyTracts = tractData;
+
+            // Build array of valid tract GEOIDs for filtering
+            const validTractGEOIDs = countyTracts.map(d => d.geoid);
 
             map.addSource('tracts-data-source', {
                 type: 'vector',
                 url: 'mapbox://' + TILESETS.tracts
             });
 
-            const fillExpression = ['case'];
+            // Build the fill expression using match for better performance
+            const colorBuckets = Array(6).fill(null).map(() => []);
+
             countyTracts.forEach(d => {
                 const value = d[attribute];
                 if (value !== null && value !== undefined) {
-                    let colorIndex = 5;
+                    let colorIndex = 5; // Default to lightest
                     for (let i = breaks.length - 2; i >= 0; i--) {
                         if (value >= breaks[i]) {
                             colorIndex = breaks.length - 2 - i;
                             break;
                         }
                     }
-                    fillExpression.push(['==', ['get', 'GEOID'], d.geoid]);
-                    fillExpression.push(COLOR_PALETTE[colorIndex]);
+                    colorBuckets[colorIndex].push(d.geoid);
                 }
             });
-            fillExpression.push('#eeeeee');
+
+            // Build fill expression using match (more efficient than many ==)
+            const fillExpression = ['match', ['get', 'GEOID']];
+
+            // Add each color bucket
+            colorBuckets.forEach((geoids, index) => {
+                if (geoids.length > 0) {
+                    geoids.forEach(geoid => {
+                        fillExpression.push(geoid);
+                        fillExpression.push(COLOR_PALETTE[index]);
+                    });
+                }
+            });
+
+            fillExpression.push('rgba(0,0,0,0)'); // Default for non-matching (transparent)
 
             // Find the first symbol layer (labels) to insert data layer before it
             const layers = map.getStyle().layers;
@@ -603,6 +611,9 @@
                 }
             }
 
+            // Create a match expression to only show tracts in our data
+            const matchFilter = ['match', ['get', 'GEOID'], validTractGEOIDs, true, false];
+
             map.addLayer({
                 id: 'tracts-data',
                 type: 'fill',
@@ -612,12 +623,10 @@
                     'fill-color': fillExpression,
                     'fill-opacity': 0.7
                 },
-                filter: [
-                    'all',
-                    ['has', 'GEOID'],
-                    ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
-                ]
+                filter: matchFilter // Only show tracts that exist in our JSON data
             }, firstSymbolId);
+
+            console.log('Tract data layer added with filter for', validTractGEOIDs.length, 'GEOIDs');
 
         } else if (layerType === 'zip') {
             // Handle zip code data - filter to only Illinois zips with data
