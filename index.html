@@ -202,7 +202,7 @@
 
     // County of interest - change this to analyze a different county
     const COUNTY_NAME = 'Will County';
-    const COUNTY_GEOID = '17197';  // Will County, IL GEOID (State FIPS 17 + County FIPS 197)
+    const COUNTY_GEOID = '17197';  // Will County GEOID (State FIPS 17 + County FIPS 197)
     const STATE_NAME = 'Illinois';
 
     // Optional: Custom initial map view (leave null to auto-fit to county)
@@ -384,6 +384,16 @@
         });
 
 
+        // Find the first symbol layer (labels) to insert layers before it
+        const layers = map.getStyle().layers;
+        let firstSymbolId;
+        for (const layer of layers) {
+            if (layer.type === 'symbol') {
+                firstSymbolId = layer.id;
+                break;
+            }
+        }
+
         // Add county layer with correct source-layer name: "states"
         map.addLayer({
             id: 'counties-fill',
@@ -394,7 +404,7 @@
                 'fill-color': 'transparent',
                 'fill-opacity': 0
             }
-        });
+        }, firstSymbolId);
 
         map.addLayer({
             id: 'counties-outline',
@@ -406,7 +416,7 @@
                 'line-width': 2.5
             },
             filter: ['==', ['get', 'GEOID'], COUNTY_GEOID]
-        });
+        }, firstSymbolId);
 
         // Add census tracts source and layer
         map.addSource('tracts-source', {
@@ -432,7 +442,7 @@
                 ['has', 'GEOID'],
                 ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
             ]
-        });
+        }, firstSymbolId);
 
         // Add zip codes source and layer
         map.addSource('zipcodes-source', {
@@ -447,6 +457,16 @@
                 if (data.vector_layers) {
                     const sourceLayer = data.vector_layers[0].id;
                     console.log('Using zip source-layer:', sourceLayer);
+
+                    // Find the first symbol layer (labels) to insert before it
+                    const layers = map.getStyle().layers;
+                    let firstSymbolId;
+                    for (const layer of layers) {
+                        if (layer.type === 'symbol') {
+                            firstSymbolId = layer.id;
+                            break;
+                        }
+                    }
 
                     map.addLayer({
                         id: 'zipcodes-outline',
@@ -464,20 +484,42 @@
                             ['has', 'GEOID20'],
                             ['==', ['slice', ['get', 'GEOID20'], 0, 5], COUNTY_GEOID]
                         ]
-                    });
+                    }, firstSymbolId);
                 }
             })
             .catch(error => console.error('Error fetching zip tileset metadata:', error));
 
 
         // Load tract data from JSON
-        fetch('CTs_Illinois_251016.json')
-            .then(response => response.json())
-            .then(data => {
-                tractData = data;
-                console.log('Loaded', tractData.length, 'tract records');
+        fetch('CTs_USA_251016')
+            .then(response => {
+                console.log('Fetch response status:', response.status);
+                if (!response.ok) {
+                    throw new Error('Failed to load CTs_USA_251016: ' + response.status);
+                }
+                return response.json();
             })
-            .catch(error => console.error('Error loading tract data:', error));
+            .then(data => {
+                console.log('Total USA tract records:', data.length);
+                console.log('Sample record:', data[0]);
+
+                // Filter to only include tracts from the specified state
+                // Extract state FIPS from COUNTY_GEOID (first 2 digits)
+                const stateFIPS = COUNTY_GEOID.substring(0, 2);
+                console.log('Filtering for state FIPS:', stateFIPS);
+
+                tractData = data.filter(d => d.geoid && d.geoid.startsWith(stateFIPS));
+                console.log('Loaded', tractData.length, 'tract records for', STATE_NAME);
+
+                if (tractData.length === 0) {
+                    console.warn('No tracts found for state FIPS', stateFIPS);
+                    console.warn('Available fields in first record:', Object.keys(data[0]));
+                }
+            })
+            .catch(error => {
+                console.error('Error loading tract data:', error);
+                console.error('Make sure CTs_USA_251016 exists in the same directory as index.html');
+            });
 
         // Load zip code data from JSON
         fetch('Zips_Illinois_Zillow_251016.json')
@@ -697,19 +739,10 @@
 
             fillExpression.push('rgba(0,0,0,0)'); // Default for non-matching (transparent)
 
-            // Find the first symbol layer (labels) to insert data layer before it
-            const layers = map.getStyle().layers;
-            let firstSymbolId;
-            for (const layer of layers) {
-                if (layer.type === 'symbol') {
-                    firstSymbolId = layer.id;
-                    break;
-                }
-            }
-
             // Create a match expression to only show tracts in our data
             const matchFilter = ['match', ['get', 'GEOID'], validTractGEOIDs, true, false];
 
+            // Insert data layer before county outline (so county appears on top of data)
             map.addLayer({
                 id: 'tracts-data',
                 type: 'fill',
@@ -720,7 +753,7 @@
                     'fill-opacity': 0.7
                 },
                 filter: matchFilter // Only show tracts that exist in our JSON data
-            }, firstSymbolId);
+            }, 'counties-outline');
 
             console.log('Tract data layer added with filter for', validTractGEOIDs.length, 'GEOIDs');
 
@@ -835,16 +868,7 @@
                         // Use GEOID20 which is the actual property name in the tileset
                         const matchFilter = ['match', ['to-string', ['get', 'GEOID20']], validZipGEOIDs, true, false];
 
-                        // Find the first symbol layer (labels) to insert data layer before it
-                        const layers = map.getStyle().layers;
-                        let firstSymbolId;
-                        for (const layer of layers) {
-                            if (layer.type === 'symbol') {
-                                firstSymbolId = layer.id;
-                                break;
-                            }
-                        }
-
+                        // Insert data layer before county outline (so county appears on top of data)
                         map.addLayer({
                             id: 'zips-data',
                             type: 'fill',
@@ -855,7 +879,7 @@
                                 'fill-opacity': 0.7
                             },
                             filter: matchFilter
-                        }, firstSymbolId);
+                        }, 'counties-outline');
 
                         console.log('Zip data layer added with filter for', validZipGEOIDs.length, 'GEOIDs');
                     }
@@ -966,6 +990,16 @@
         // Re-add layers after style changes
         map.once('style.load', function() {
             // Re-add all sources and layers
+            // Find the first symbol layer (labels) to insert layers before it
+            const layers = map.getStyle().layers;
+            let firstSymbolId;
+            for (const layer of layers) {
+                if (layer.type === 'symbol') {
+                    firstSymbolId = layer.id;
+                    break;
+                }
+            }
+
             map.addSource('counties-source', {
                 type: 'vector',
                 url: 'mapbox://' + TILESETS.counties
@@ -980,7 +1014,7 @@
                     'fill-color': 'transparent',
                     'fill-opacity': 0
                 }
-            });
+            }, firstSymbolId);
 
             map.addLayer({
                 id: 'counties-outline',
@@ -992,7 +1026,7 @@
                     'line-width': 2.5
                 },
                 filter: ['==', ['get', 'GEOID'], COUNTY_GEOID]
-            });
+            }, firstSymbolId);
 
             map.addSource('tracts-source', {
                 type: 'vector',
@@ -1017,7 +1051,7 @@
                     ['has', 'GEOID'],
                     ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
                 ]
-            });
+            }, firstSymbolId);
 
             // Re-add zip codes source
             map.addSource('zipcodes-source', {
@@ -1030,6 +1064,16 @@
                 .then(data => {
                     if (data.vector_layers) {
                         const sourceLayer = data.vector_layers[0].id;
+
+                        // Find the first symbol layer (labels) to insert before it
+                        const layers = map.getStyle().layers;
+                        let firstSymbolId;
+                        for (const layer of layers) {
+                            if (layer.type === 'symbol') {
+                                firstSymbolId = layer.id;
+                                break;
+                            }
+                        }
 
                         map.addLayer({
                             id: 'zipcodes-outline',
@@ -1047,7 +1091,7 @@
                                 ['has', 'GEOID20'],
                                 ['==', ['slice', ['get', 'GEOID20'], 0, 5], COUNTY_GEOID]
                             ]
-                        });
+                        }, firstSymbolId);
                     }
                 })
                 .catch(error => console.error('Error re-adding zip layer after basemap change:', error));
@@ -1097,6 +1141,12 @@
         } else {
             const [layerType, attribute] = selectedValue.split(':');
             console.log('Updating data layer:', layerType, attribute);
+
+            // Store the layer name before changing dropdown to blank
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            currentLayerName = selectedOption.text;
+            console.log('Stored layer name:', currentLayerName);
+
             updateDataLayer(layerType, attribute);
             // Switch to blank option to show just the arrow
             setTimeout(() => {
