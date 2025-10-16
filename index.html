@@ -81,14 +81,21 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">Select Data Layer</label>
                     <select id="layer-select" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
                         <option value="" selected>No data layer</option>
-                        <option value="pctrent30_23">Percent of renters cost burdened (2023)</option>
-                        <option value="pctowned30_23">Percent of homeowners cost burdened (2023)</option>
-                        <option value="total_cb_rt_23">Total cost burden rate (2023)</option>
-                        <option value="hh_change_23_20">Household change 2020-2023 (%)</option>
-                        <option value="median_hh_income_23">Median household income (2023)</option>
-                        <option value="pop_23">Population (2023)</option>
-                        <option value="housing_unit_count_23">Housing unit count (2023)</option>
-                        <option value="total_hh_23">Total households (2023)</option>
+                        <optgroup label="Census Tract Data">
+                            <option value="tract:pctrent30_23">Percent of renters cost burdened (2023)</option>
+                            <option value="tract:pctowned30_23">Percent of homeowners cost burdened (2023)</option>
+                            <option value="tract:total_cb_rt_23">Total cost burden rate (2023)</option>
+                            <option value="tract:hh_change_23_20">Household change 2020-2023 (%)</option>
+                            <option value="tract:median_hh_income_23">Median household income (2023)</option>
+                            <option value="tract:pop_23">Population (2023)</option>
+                            <option value="tract:housing_unit_count_23">Housing unit count (2023)</option>
+                            <option value="tract:total_hh_23">Total households (2023)</option>
+                        </optgroup>
+                        <optgroup label="Zip Code Data (Zillow)">
+                            <option value="zip:zhvi_20">Typical home value 2020 (ZHVI)</option>
+                            <option value="zip:zhvi_25">Typical home value 2025 (ZHVI)</option>
+                            <option value="zip:zhvi_change_20_25">Home value change 2020-2025 (%)</option>
+                        </optgroup>
                     </select>
                 </div>
 
@@ -158,7 +165,7 @@
 
     // Basemap styles
     const BASEMAP_STYLES = {
-        gray: 'mapbox://styles/communityscale/cmgicidwh007k01qdauae93b0',
+        gray: 'mapbox://styles/communityscale/cmcuwuwcv00xz01s1gn7xccqi',
         satellite: 'mapbox://styles/communityscale/cmgidsjne002c01qne3nf930s',
         lightSatellite: 'mapbox://styles/communityscale/cmgidu19b00n301sb0jcihsuk'
     };
@@ -175,6 +182,7 @@
 
     // Data storage
     let tractData = null;
+    let zipData = null;
     let currentDataLayer = null;
 
     // Initial map settings (will be updated to fit county)
@@ -261,6 +269,9 @@
                 'line-width': 0.5,
                 'line-opacity': 0.6
             },
+            layout: {
+                'visibility': 'none' // Hidden by default
+            },
             filter: [
                 'all',
                 ['has', 'GEOID'],
@@ -268,25 +279,40 @@
             ]
         });
 
-        // Add zip codes source and layer (hidden for now)
-        // map.addSource('zipcodes-source', {
-        //     type: 'vector',
-        //     url: 'mapbox://' + TILESETS.zipcodes
-        // });
+        // Add zip codes source and layer
+        map.addSource('zipcodes-source', {
+            type: 'vector',
+            url: 'mapbox://' + TILESETS.zipcodes
+        });
 
-        // map.addLayer({
-        //     id: 'zipcodes-outline',
-        //     type: 'line',
-        //     source: 'zipcodes-source',
-        //     'source-layer': 'zipcodes',
-        //     paint: {
-        //         'line-color': '#9ca3af',
-        //         'line-width': 1,
-        //         'line-opacity': 0.5,
-        //         'line-dasharray': [2, 2]
-        //     },
-        //     filter: ['==', ['get', 'COUNTY'], COUNTY_ID]
-        // });
+        // Fetch zip tileset metadata to find correct source-layer name
+        fetch('https://api.mapbox.com/v4/' + TILESETS.zipcodes + '.json?secure&access_token=' + mapboxgl.accessToken)
+            .then(response => response.json())
+            .then(data => {
+                if (data.vector_layers) {
+                    const sourceLayer = data.vector_layers[0].id;
+                    console.log('Using zip source-layer:', sourceLayer);
+
+                    map.addLayer({
+                        id: 'zipcodes-outline',
+                        type: 'line',
+                        source: 'zipcodes-source',
+                        'source-layer': sourceLayer,
+                        paint: {
+                            'line-color': '#9ca3af',
+                            'line-width': 1,
+                            'line-opacity': 0.5,
+                            'line-dasharray': [2, 2]
+                        },
+                        filter: [
+                            'all',
+                            ['has', 'GEOID20'],
+                            ['==', ['slice', ['get', 'GEOID20'], 0, 5], COUNTY_GEOID]
+                        ]
+                    });
+                }
+            })
+            .catch(error => console.error('Error fetching zip tileset metadata:', error));
 
 
         // Load tract data from JSON
@@ -297,6 +323,15 @@
                 console.log('Loaded', tractData.length, 'tract records');
             })
             .catch(error => console.error('Error loading tract data:', error));
+
+        // Load zip code data from JSON
+        fetch('Zips_Illinois_Zillow_251016.json')
+            .then(response => response.json())
+            .then(data => {
+                zipData = data;
+                console.log('Loaded', zipData.length, 'zip code records');
+            })
+            .catch(error => console.error('Error loading zip data:', error));
 
         // Fit to county boundary (unless custom center/zoom is specified)
         if (!CUSTOM_CENTER && !CUSTOM_ZOOM) {
@@ -434,17 +469,30 @@
     }
 
     // Calculate quantile breaks for a given attribute
-    function calculateQuantiles(attribute, numBuckets = 6) {
-        if (!tractData) return null;
+    function calculateQuantiles(layerType, attribute, numBuckets = 6) {
+        const sourceData = layerType === 'zip' ? zipData : tractData;
+        if (!sourceData) return null;
 
-        // Filter data for current county
-        const countyData = tractData
-            .filter(d => d.geoid.startsWith(COUNTY_GEOID))
-            .map(d => d[attribute])
-            .filter(v => v !== null && v !== undefined && !isNaN(v))
-            .sort((a, b) => a - b);
+        // Filter data for current county/state
+        let countyData;
+        if (layerType === 'zip') {
+            // For zip codes, use all state data (zip codes don't align with counties)
+            countyData = sourceData
+                .map(d => d[attribute])
+                .filter(v => v !== null && v !== undefined && !isNaN(v))
+                .sort((a, b) => a - b);
+        } else {
+            countyData = sourceData
+                .filter(d => d.geoid.startsWith(COUNTY_GEOID))
+                .map(d => d[attribute])
+                .filter(v => v !== null && v !== undefined && !isNaN(v))
+                .sort((a, b) => a - b);
+        }
 
-        if (countyData.length === 0) return null;
+        if (countyData.length === 0) {
+            console.warn('No data found for', layerType, attribute);
+            return null;
+        }
 
         const breaks = [];
         for (let i = 0; i <= numBuckets; i++) {
@@ -475,56 +523,130 @@
     }
 
     // Update data layer
-    function updateDataLayer(attribute) {
-        if (!tractData || !attribute) {
-            // Remove data layer
-            if (map.getLayer('tracts-data')) {
-                map.removeLayer('tracts-data');
-            }
-            if (map.getSource('tracts-data-source')) {
-                map.removeSource('tracts-data-source');
-            }
+    function updateDataLayer(layerType, attribute) {
+        console.log('updateDataLayer called with:', layerType, attribute);
+        console.log('tractData available:', tractData !== null, tractData ? tractData.length : 0);
+        console.log('zipData available:', zipData !== null, zipData ? zipData.length : 0);
+
+        // Remove existing data layers
+        if (map.getLayer('tracts-data')) map.removeLayer('tracts-data');
+        if (map.getLayer('zips-data')) map.removeLayer('zips-data');
+        if (map.getSource('tracts-data-source')) map.removeSource('tracts-data-source');
+        if (map.getSource('zips-data-source')) map.removeSource('zips-data-source');
+
+        if (!layerType || !attribute) {
             document.getElementById('legend').classList.add('hidden');
             currentDataLayer = null;
+            // Hide tract outline when no data layer is selected
+            if (map.getLayer('tracts-outline')) {
+                map.setLayoutProperty('tracts-outline', 'visibility', 'none');
+            }
             return;
         }
 
-        const breaks = calculateQuantiles(attribute, 6);
+        // Show/hide tract outline based on layer type
+        if (map.getLayer('tracts-outline')) {
+            if (layerType === 'tract') {
+                map.setLayoutProperty('tracts-outline', 'visibility', 'visible');
+            } else {
+                map.setLayoutProperty('tracts-outline', 'visibility', 'none');
+            }
+        }
+
+        const sourceData = layerType === 'zip' ? zipData : tractData;
+        if (!sourceData) {
+            console.warn('Data not loaded yet for', layerType);
+            return;
+        }
+
+        console.log('Source data loaded, calculating quantiles...');
+
+        const breaks = calculateQuantiles(layerType, attribute, 6);
         if (!breaks) {
             console.warn('Could not calculate breaks for', attribute);
             return;
         }
 
-        // Filter data for current county and create GeoJSON
-        const countyTracts = tractData.filter(d => d.geoid.startsWith(COUNTY_GEOID));
+        if (layerType === 'tract') {
+            // Handle tract data
+            const countyTracts = tractData.filter(d => d.geoid.startsWith(COUNTY_GEOID));
 
-        // Create property lookup for join
-        const dataLookup = {};
-        countyTracts.forEach(d => {
-            dataLookup[d.geoid] = d[attribute];
-        });
-
-        // Add or update data source - using the existing tract geometries
-        if (!map.getSource('tracts-data-source')) {
-            // Clone the tracts source
             map.addSource('tracts-data-source', {
                 type: 'vector',
                 url: 'mapbox://' + TILESETS.tracts
             });
-        }
 
-        // Remove existing layer if present
-        if (map.getLayer('tracts-data')) {
-            map.removeLayer('tracts-data');
-        }
+            const fillExpression = ['case'];
+            countyTracts.forEach(d => {
+                const value = d[attribute];
+                if (value !== null && value !== undefined) {
+                    let colorIndex = 5;
+                    for (let i = breaks.length - 2; i >= 0; i--) {
+                        if (value >= breaks[i]) {
+                            colorIndex = breaks.length - 2 - i;
+                            break;
+                        }
+                    }
+                    fillExpression.push(['==', ['get', 'GEOID'], d.geoid]);
+                    fillExpression.push(COLOR_PALETTE[colorIndex]);
+                }
+            });
+            fillExpression.push('#eeeeee');
 
-        // Create data-driven fill expression using feature-state or direct lookup
-        // We'll use a case expression based on GEOID
-        const fillExpression = ['case'];
-        countyTracts.forEach(d => {
-            const value = d[attribute];
-            if (value !== null && value !== undefined) {
-                // Find which bucket this value falls into
+            // Find the first symbol layer (labels) to insert data layer before it
+            const layers = map.getStyle().layers;
+            let firstSymbolId;
+            for (const layer of layers) {
+                if (layer.type === 'symbol') {
+                    firstSymbolId = layer.id;
+                    break;
+                }
+            }
+
+            map.addLayer({
+                id: 'tracts-data',
+                type: 'fill',
+                source: 'tracts-data-source',
+                'source-layer': 'tracts',
+                paint: {
+                    'fill-color': fillExpression,
+                    'fill-opacity': 0.7
+                },
+                filter: [
+                    'all',
+                    ['has', 'GEOID'],
+                    ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
+                ]
+            }, firstSymbolId);
+
+        } else if (layerType === 'zip') {
+            // Handle zip code data - filter to only Illinois zips with data
+            const stateZips = zipData.filter(d => d.geoid && d[attribute] !== null && d[attribute] !== undefined);
+
+            console.log('Creating zip data layer for', stateZips.length, 'zips');
+            console.log('Sample zip GEOIDs from JSON:', stateZips.slice(0, 5).map(d => d.geoid));
+            console.log('Breaks:', breaks);
+
+            map.addSource('zips-data-source', {
+                type: 'vector',
+                url: 'mapbox://' + TILESETS.zipcodes
+            });
+
+            // Build array of valid GEOIDs for filtering
+            const validZipGEOIDs = stateZips.map(d => d.geoid);
+
+            // Create a lookup map for faster access
+            const zipDataLookup = {};
+            stateZips.forEach(d => {
+                zipDataLookup[d.geoid] = d[attribute];
+            });
+
+            // Build the fill expression using match for better performance
+            // First, create arrays of GEOIDs for each color bucket
+            const colorBuckets = Array(6).fill(null).map(() => []);
+
+            stateZips.forEach(d => {
+                const value = d[attribute];
                 let colorIndex = 5; // Default to lightest
                 for (let i = breaks.length - 2; i >= 0; i--) {
                     if (value >= breaks[i]) {
@@ -532,35 +654,116 @@
                         break;
                     }
                 }
-                fillExpression.push(['==', ['get', 'GEOID'], d.geoid]);
-                fillExpression.push(COLOR_PALETTE[colorIndex]);
-            }
-        });
-        fillExpression.push('#eeeeee'); // Default
+                colorBuckets[colorIndex].push(d.geoid);
+            });
 
-        // Add data layer
-        map.addLayer({
-            id: 'tracts-data',
-            type: 'fill',
-            source: 'tracts-data-source',
-            'source-layer': 'tracts',
-            paint: {
-                'fill-color': fillExpression,
-                'fill-opacity': 0.7
-            },
-            filter: [
-                'all',
-                ['has', 'GEOID'],
-                ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
-            ]
-        }, 'tracts-outline'); // Add below tract outlines
+            // Build fill expression using match (more efficient than many ==)
+            // Use GEOID20 which is the actual property name in the tileset
+            const fillExpression = ['match', ['to-string', ['get', 'GEOID20']]];
 
-        currentDataLayer = attribute;
-        updateLegend(attribute, breaks);
+            // Add each color bucket
+            colorBuckets.forEach((geoids, index) => {
+                if (geoids.length > 0) {
+                    geoids.forEach(geoid => {
+                        fillExpression.push(geoid);
+                        fillExpression.push(COLOR_PALETTE[index]);
+                    });
+                }
+            });
+
+            fillExpression.push('rgba(0,0,0,0)'); // Default for non-matching
+
+            console.log('Fill expression has', (fillExpression.length - 1) / 2, 'zip codes');
+            console.log('Color palette:', COLOR_PALETTE);
+
+            // Need to get the correct source-layer name for zips
+            fetch('https://api.mapbox.com/v4/' + TILESETS.zipcodes + '.json?secure&access_token=' + mapboxgl.accessToken)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.vector_layers) {
+                        const sourceLayer = data.vector_layers[0].id;
+                        console.log('Using zip source-layer for data:', sourceLayer);
+
+                        // Query to check what GEOIDs exist in the tileset
+                        map.on('idle', function checkGeoIds() {
+                            const features = map.querySourceFeatures('zips-data-source', {
+                                sourceLayer: sourceLayer
+                            });
+                            if (features.length > 0) {
+                                console.log('Total features queried from tileset:', features.length);
+                                console.log('Sample tileset GEOIDs (first 10):', features.slice(0, 10).map(f => ({
+                                    GEOID20: f.properties.GEOID20,
+                                    GEOID20_str: String(f.properties.GEOID20),
+                                    type: typeof f.properties.GEOID20,
+                                    all_props: Object.keys(f.properties)
+                                })));
+
+                                console.log('Looking for these IL zips (first 10):', validZipGEOIDs.slice(0, 10));
+
+                                // Check if any Illinois zips are in the tileset
+                                const ilZips = features.filter(f => {
+                                    const geoid = String(f.properties.GEOID20);
+                                    return validZipGEOIDs.includes(geoid);
+                                });
+                                console.log('Found', ilZips.length, 'matching Illinois zips in tileset');
+                                if (ilZips.length > 0) {
+                                    console.log('Sample matching zip:', ilZips[0].properties);
+                                } else {
+                                    // Try to find Illinois zips by checking if they start with common IL prefixes
+                                    const ilPrefixes = ['600', '601', '602', '603', '604', '605', '606', '607', '608', '609', '610', '611', '612', '613', '614', '615', '616', '617', '618', '619', '620', '621', '622', '623', '624', '625', '626', '627', '628', '629'];
+                                    const possibleILZips = features.filter(f => {
+                                        const geoid = String(f.properties.GEOID20);
+                                        return ilPrefixes.some(prefix => geoid.startsWith(prefix));
+                                    });
+                                    console.log('Found', possibleILZips.length, 'possible IL zips by prefix');
+                                    if (possibleILZips.length > 0) {
+                                        console.log('Sample possible IL zip:', possibleILZips[0].properties);
+                                    }
+                                }
+
+                                map.off('idle', checkGeoIds);
+                            }
+                        });
+
+                        // Create a match expression to only show zips in our data
+                        // This prevents showing all US zips
+                        // Use GEOID20 which is the actual property name in the tileset
+                        const matchFilter = ['match', ['to-string', ['get', 'GEOID20']], validZipGEOIDs, true, false];
+
+                        // Find the first symbol layer (labels) to insert data layer before it
+                        const layers = map.getStyle().layers;
+                        let firstSymbolId;
+                        for (const layer of layers) {
+                            if (layer.type === 'symbol') {
+                                firstSymbolId = layer.id;
+                                break;
+                            }
+                        }
+
+                        map.addLayer({
+                            id: 'zips-data',
+                            type: 'fill',
+                            source: 'zips-data-source',
+                            'source-layer': sourceLayer,
+                            paint: {
+                                'fill-color': fillExpression,
+                                'fill-opacity': 0.7
+                            },
+                            filter: matchFilter
+                        }, firstSymbolId);
+
+                        console.log('Zip data layer added with filter for', validZipGEOIDs.length, 'GEOIDs');
+                    }
+                })
+                .catch(error => console.error('Error adding zip data layer:', error));
+        }
+
+        currentDataLayer = layerType + ':' + attribute;
+        updateLegend(layerType, attribute, breaks);
     }
 
     // Update legend
-    function updateLegend(attribute, breaks) {
+    function updateLegend(layerType, attribute, breaks) {
         const legendTitle = document.getElementById('legend-title');
         const legendContent = document.getElementById('legend-content');
         const legend = document.getElementById('legend');
@@ -577,7 +780,7 @@
         function formatValue(val) {
             if (attribute.includes('pct') || attribute.includes('_rt_') || attribute.includes('rate') || attribute.includes('change')) {
                 return Math.round(val * 100) + '%';
-            } else if (attribute.includes('income')) {
+            } else if (attribute.includes('income') || attribute.includes('zhvi')) {
                 return '$' + (Math.round(val / 100) * 100).toLocaleString();
             } else {
                 return Math.round(val).toLocaleString();
@@ -677,6 +880,9 @@
                     'line-width': 0.5,
                     'line-opacity': 0.6
                 },
+                layout: {
+                    'visibility': 'none' // Hidden by default
+                },
                 filter: [
                     'all',
                     ['has', 'GEOID'],
@@ -684,18 +890,67 @@
                 ]
             });
 
-            // Zip codes layer removed for now
+            // Re-add zip codes source
+            map.addSource('zipcodes-source', {
+                type: 'vector',
+                url: 'mapbox://' + TILESETS.zipcodes
+            });
+
+            fetch('https://api.mapbox.com/v4/' + TILESETS.zipcodes + '.json?secure&access_token=' + mapboxgl.accessToken)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.vector_layers) {
+                        const sourceLayer = data.vector_layers[0].id;
+
+                        map.addLayer({
+                            id: 'zipcodes-outline',
+                            type: 'line',
+                            source: 'zipcodes-source',
+                            'source-layer': sourceLayer,
+                            paint: {
+                                'line-color': '#9ca3af',
+                                'line-width': 1,
+                                'line-opacity': 0.5,
+                                'line-dasharray': [2, 2]
+                            },
+                            filter: [
+                                'all',
+                                ['has', 'GEOID20'],
+                                ['==', ['slice', ['get', 'GEOID20'], 0, 5], COUNTY_GEOID]
+                            ]
+                        });
+                    }
+                })
+                .catch(error => console.error('Error re-adding zip layer after basemap change:', error));
+
+            // Re-apply current data layer if one was selected
+            if (currentDataLayer) {
+                const [layerType, attribute] = currentDataLayer.split(':');
+                updateDataLayer(layerType, attribute);
+            }
         });
     }
 
     // ============================================
-    // EVENT LISTENERS
+    // EVENT LISTENERS - Set up immediately
     // ============================================
 
+    console.log('Setting up event listeners...');
+
     // Layer selector dropdown
-    document.getElementById('layer-select').addEventListener('change', function(e) {
-        const selectedAttribute = e.target.value;
-        updateDataLayer(selectedAttribute || null);
+    const layerSelect = document.getElementById('layer-select');
+    console.log('Layer select element:', layerSelect);
+
+    layerSelect.addEventListener('change', function(e) {
+        const selectedValue = e.target.value;
+        console.log('Layer selector changed to:', selectedValue);
+        if (!selectedValue) {
+            updateDataLayer(null, null);
+        } else {
+            const [layerType, attribute] = selectedValue.split(':');
+            console.log('Updating data layer:', layerType, attribute);
+            updateDataLayer(layerType, attribute);
+        }
     });
 
     // Basemap toggle
@@ -711,59 +966,81 @@
     // Function to show tract popup
     function showTractPopup(e) {
         const properties = e.features[0].properties;
-
-        // Get tract info from data
         const tractInfo = tractData ? tractData.find(d => d.geoid === properties.GEOID) : null;
         const tractName = tractInfo ? tractInfo.name : (properties.NAME || 'Census Tract ' + properties.GEOID);
+        showDataPopup(e, tractName, tractInfo, 'tract');
+    }
 
+    // Function to show zip popup
+    function showZipPopup(e) {
+        const properties = e.features[0].properties;
+        const zipInfo = zipData ? zipData.find(d => d.geoid === properties.GEOID20) : null;
+        const zipName = 'ZIP Code ' + properties.GEOID20;
+        showDataPopup(e, zipName, zipInfo, 'zip');
+    }
+
+    // Generic popup function
+    function showDataPopup(e, locationName, dataInfo, layerType) {
         let popupHTML = `
             <div class="popup-content">
-                <div class="popup-header">${tractName}</div>`;
+                <div class="popup-header">${locationName}</div>`;
 
         // Add data value with descriptive caption if a layer is selected
-        if (currentDataLayer && tractInfo && tractInfo[currentDataLayer] !== null && tractInfo[currentDataLayer] !== undefined) {
-            const value = tractInfo[currentDataLayer];
-            let formattedValue, caption;
+        if (currentDataLayer && dataInfo) {
+            const [currentLayerType, attribute] = currentDataLayer.split(':');
+            if (currentLayerType === layerType && dataInfo[attribute] !== null && dataInfo[attribute] !== undefined) {
+                const value = dataInfo[attribute];
+                let formattedValue, caption;
 
-            if (currentDataLayer.includes('pct') || currentDataLayer.includes('_rt_') || currentDataLayer.includes('rate') || currentDataLayer.includes('change')) {
-                formattedValue = Math.round(value * 100) + '%';
-            } else if (currentDataLayer.includes('income')) {
-                formattedValue = '$' + (Math.round(value / 100) * 100).toLocaleString();
-            } else {
-                formattedValue = Math.round(value).toLocaleString();
+                if (attribute.includes('pct') || attribute.includes('_rt_') || attribute.includes('rate') || attribute.includes('change')) {
+                    formattedValue = Math.round(value * 100) + '%';
+                } else if (attribute.includes('income') || attribute.includes('zhvi')) {
+                    formattedValue = '$' + (Math.round(value / 100) * 100).toLocaleString();
+                } else {
+                    formattedValue = Math.round(value).toLocaleString();
+                }
+
+                // Create descriptive caption based on attribute
+                switch(attribute) {
+                    case 'pctrent30_23':
+                        caption = `${formattedValue} of renters are cost-burdened.`;
+                        break;
+                    case 'pctowned30_23':
+                        caption = `${formattedValue} of homeowners are cost-burdened.`;
+                        break;
+                    case 'total_cb_rt_23':
+                        caption = `${formattedValue} of households are cost-burdened.`;
+                        break;
+                    case 'hh_change_23_20':
+                        caption = `Household count changed by ${formattedValue} from 2020 to 2023.`;
+                        break;
+                    case 'median_hh_income_23':
+                        caption = `Median household income is ${formattedValue}.`;
+                        break;
+                    case 'pop_23':
+                        caption = `Population is ${formattedValue}.`;
+                        break;
+                    case 'housing_unit_count_23':
+                        caption = `${formattedValue} housing units.`;
+                        break;
+                    case 'total_hh_23':
+                        caption = `${formattedValue} total households.`;
+                        break;
+                    case 'zhvi_20':
+                        caption = `Typical home value in 2020 was ${formattedValue}.`;
+                        break;
+                    case 'zhvi_25':
+                        caption = `Typical home value in 2025 is ${formattedValue}.`;
+                        break;
+                    case 'zhvi_change_20_25':
+                        caption = `Home values changed by ${formattedValue} from 2020 to 2025.`;
+                        break;
+                    default:
+                        caption = `${formattedValue}`;
+                }
+
+                popupHTML += `<p>${caption}</p>`;
             }
-
-            // Create descriptive caption based on attribute
-            switch(currentDataLayer) {
-                case 'pctrent30_23':
-                    caption = `${formattedValue} of renters are cost-burdened.`;
-                    break;
-                case 'pctowned30_23':
-                    caption = `${formattedValue} of homeowners are cost-burdened.`;
-                    break;
-                case 'total_cb_rt_23':
-                    caption = `${formattedValue} of households are cost-burdened.`;
-                    break;
-                case 'hh_change_23_20':
-                    caption = `Household count changed by ${formattedValue} from 2020 to 2023.`;
-                    break;
-                case 'median_hh_income_23':
-                    caption = `Median household income is ${formattedValue}.`;
-                    break;
-                case 'pop_23':
-                    caption = `Population is ${formattedValue}.`;
-                    break;
-                case 'housing_unit_count_23':
-                    caption = `${formattedValue} housing units.`;
-                    break;
-                case 'total_hh_23':
-                    caption = `${formattedValue} total households.`;
-                    break;
-                default:
-                    caption = `${formattedValue}`;
-            }
-
-            popupHTML += `<p>${caption}</p>`;
         }
 
         popupHTML += `</div>`;
@@ -777,6 +1054,10 @@
     // Add click handlers for popups on tracts (both outline and data layer)
     map.on('click', 'tracts-outline', showTractPopup);
     map.on('click', 'tracts-data', showTractPopup);
+
+    // Add click handlers for popups on zip codes
+    map.on('click', 'zipcodes-outline', showZipPopup);
+    map.on('click', 'zips-data', showZipPopup);
 
     // Add click handler for county
     map.on('click', 'counties-outline', function(e) {
@@ -810,6 +1091,22 @@
     });
 
     map.on('mouseleave', 'tracts-data', function() {
+        map.getCanvas().style.cursor = '';
+    });
+
+    map.on('mouseenter', 'zipcodes-outline', function() {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+
+    map.on('mouseleave', 'zipcodes-outline', function() {
+        map.getCanvas().style.cursor = '';
+    });
+
+    map.on('mouseenter', 'zips-data', function() {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+
+    map.on('mouseleave', 'zips-data', function() {
         map.getCanvas().style.cursor = '';
     });
 
