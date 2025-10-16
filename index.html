@@ -77,10 +77,15 @@
 
             <div class="overflow-y-auto flex-grow">
                 <!-- Data layer selector -->
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Data Layer</label>
-                    <select id="layer-select" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
-                        <option value="" selected>No data layer</option>
+                <div class="mb-4 -ml-3 relative">
+                    <div class="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
+                    <select id="layer-select" class="w-full bg-white rounded pl-9 pr-3 py-2 text-sm focus:outline-none appearance-none">
+                        <option value="" selected>Select data layer</option>
+                        <option value="blank" hidden></option>
                         <optgroup label="Census Tract Data">
                             <option value="tract:pctrent30_23">Percent of renters cost burdened (2023)</option>
                             <option value="tract:pctowned30_23">Percent of homeowners cost burdened (2023)</option>
@@ -101,8 +106,14 @@
 
                 <!-- Legend container -->
                 <div id="legend" class="mt-4 pb-4 hidden">
-                    <h3 id="legend-title" class="font-medium mb-2 text-gray-800"></h3>
-                    <div id="legend-content" class="space-y-1 text-sm text-gray-700 mb-2">
+                    <h3 id="legend-title" class="font-medium mb-2 text-black"></h3>
+                    <div id="legend-content" class="space-y-1 text-sm text-black mb-2">
+                    </div>
+                    <button id="layer-info" class="flex items-center text-sm text-black hover:text-gray-700 mt-4">
+                        <span class="material-icons text-base mr-1">info</span>
+                        About this layer
+                    </button>
+                    <div id="layer-description" class="mt-1 text-xs text-black leading-snug hidden">
                     </div>
                 </div>
             </div>
@@ -111,7 +122,7 @@
             <div id="basemap-wrapper" class="border-t border-gray-300 w-full mt-auto pt-3">
                 <button
                     id="basemap-toggle"
-                    class="w-full px-2 py-2 flex items-center justify-between bg-gray-100 hover:bg-gray-200 text-sm font-medium rounded"
+                    class="w-full pl-0 pr-2 py-2 flex items-center justify-between bg-white hover:bg-gray-100 text-sm font-medium rounded"
                 >
                     <span class="flex items-center gap-1">
                         <span class="material-icons align-text-bottom">map</span>
@@ -124,19 +135,34 @@
                 </button>
 
                 <!-- Basemap options -->
-                <div id="basemap-settings" class="hidden mt-2 space-y-3 text-sm text-gray-700">
-                    <div id="basemap-style-thumbnails" class="flex gap-2">
-                        <button data-style="gray" class="flex-1 border-2 border-gray-400 rounded p-1 bg-gray-200 hover:border-gray-600">
-                            <div class="aspect-video bg-gray-300 rounded text-xs flex items-center justify-center">Gray</div>
+                <div id="basemap-settings" class="hidden mt-2 space-y-3 text-sm text-black">
+                    <div id="basemap-style-thumbnails" class="flex gap-2" style="font-family: 'Roboto Condensed', sans-serif;">
+                        <button data-style="gray" class="flex-1 border border-white rounded p-1 hover:border-gray-400">
+                            <div class="aspect-video bg-gray-100 rounded text-xs flex items-center justify-center font-semibold">Gray</div>
                         </button>
-                        <button data-style="satellite" class="flex-1 border-2 border-gray-300 rounded p-1 hover:border-gray-600">
-                            <div class="aspect-video bg-green-800 rounded text-xs flex items-center justify-center text-white">Satellite</div>
+                        <button data-style="satellite" class="flex-1 border border-white rounded p-1 hover:border-gray-400">
+                            <div class="aspect-video bg-gray-100 rounded text-xs flex items-center justify-center font-semibold">Aerial</div>
                         </button>
-                        <button data-style="lightSatellite" class="flex-1 border-2 border-gray-300 rounded p-1 hover:border-gray-600">
-                            <div class="aspect-video bg-green-600 rounded text-xs flex items-center justify-center text-white">Light Sat</div>
+                        <button data-style="lightSatellite" class="flex-1 border border-white rounded p-1 hover:border-gray-400">
+                            <div class="aspect-video bg-gray-100 rounded text-xs flex flex-col items-center justify-center font-semibold leading-tight">
+                                <span>Light</span>
+                                <span>Aerial</span>
+                            </div>
                         </button>
                     </div>
                 </div>
+            </div>
+
+            <!-- Community Scale Logo -->
+            <div class="border-t border-gray-300 w-full pt-3 mt-3">
+                <a href="https://communityscale.io" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 hover:opacity-75 transition-opacity">
+                    <div class="bg-black rounded p-1.5 shadow-sm">
+                        <img src="https://communityscale.io/wp-content/uploads/2024/01/white-on-black-with-edges-150x150.png"
+                             alt="CommunityScale logo"
+                             class="h-6 w-6">
+                    </div>
+                    <span class="font-bold text-black" style="font-family: 'Roboto Condensed', sans-serif;">CommunityScale</span>
+                </a>
             </div>
         </div>
     </div>
@@ -151,10 +177,8 @@
             <button id="zoom-out" class="bg-white hover:bg-gray-100 rounded shadow-lg w-10 h-10 flex items-center justify-center text-gray-700 font-bold text-xl border border-gray-300">
                 −
             </button>
-            <button id="reset-extent" class="bg-white hover:bg-gray-100 rounded shadow-lg w-10 h-10 flex items-center justify-center text-gray-700 border border-gray-300" title="Reset to initial extent">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="2" width="16" height="16" rx="1"/>
-                </svg>
+            <button id="reset-extent" class="bg-white hover:bg-gray-100 rounded shadow-lg w-10 h-10 flex items-center justify-center border border-gray-300" title="Reset to county extent">
+                <span class="material-icons text-black">refresh</span>
             </button>
         </div>
     </div>
@@ -195,6 +219,49 @@
     // Color palette (darkest to lightest, darkest = highest values)
     const COLOR_PALETTE = ['#192f5e', '#3445b0', '#6e79dd', '#8795eb', '#adbfff', '#c2d8ff'];
 
+    // Layer source information
+    const LAYER_INFO = {
+        'tract:pctrent30_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)',
+            description: 'Percentage of renter-occupied households that are spending 30% or more of their monthly income on housing costs.'
+        },
+        'tract:pctowned30_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)',
+            description: 'Percentage of owner-occupied households that are spending 30% or more of their monthly income on housing costs.'
+        },
+        'tract:total_cb_rt_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)',
+            description: 'Percentage of all households (renters and owners) that are spending 30% or more of their monthly income on housing costs.'
+        },
+        'tract:hh_change_23_20': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates'
+        },
+        'tract:median_hh_income_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)'
+        },
+        'tract:pop_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)'
+        },
+        'tract:housing_unit_count_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)'
+        },
+        'tract:total_hh_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)'
+        },
+        'zip:zhvi_20': {
+            source: 'Zillow Home Value Index (ZHVI)',
+            description: 'Typical home value in 2020. ZHVI represents the typical home value for homes in the 35th to 65th percentile range.'
+        },
+        'zip:zhvi_25': {
+            source: 'Zillow Home Value Index (ZHVI)',
+            description: 'Typical home value in 2025. ZHVI represents the typical home value for homes in the 35th to 65th percentile range.'
+        },
+        'zip:zhvi_change_20_25': {
+            source: 'Zillow Home Value Index (ZHVI)',
+            description: 'Percent change in typical home values between 2020 and 2025.'
+        }
+    };
+
     // Data storage
     let tractData = null;
     let zipData = null;
@@ -202,6 +269,9 @@
 
     // Initial map settings (will be updated to fit county)
     let currentBasemap = 'gray';
+
+    // Store initial county bounds for reset button
+    let initialCountyBounds = null;
 
     // ============================================
     // MAP INITIALIZATION
@@ -447,6 +517,11 @@
                     }
                 });
 
+                // Store the initial bounds for reset button
+                if (!initialCountyBounds) {
+                    initialCountyBounds = bounds;
+                }
+
                 map.fitBounds(bounds, {
                     padding: 50,
                     duration: 800 // Smooth animation
@@ -517,6 +592,14 @@
         console.log('updateDataLayer called with:', layerType, attribute);
         console.log('tractData available:', tractData !== null, tractData ? tractData.length : 0);
         console.log('zipData available:', zipData !== null, zipData ? zipData.length : 0);
+
+        // Close any open popups when changing layers
+        const popups = document.getElementsByClassName('mapboxgl-popup');
+        if (popups.length) {
+            for (let i = popups.length - 1; i >= 0; i--) {
+                popups[i].remove();
+            }
+        }
 
         // Remove existing data layers
         if (map.getLayer('tracts-data')) map.removeLayer('tracts-data');
@@ -769,6 +852,7 @@
 
         currentDataLayer = layerType + ':' + attribute;
         updateLegend(layerType, attribute, breaks);
+        updateAboutLayer(layerType + ':' + attribute);
     }
 
     // Update legend
@@ -821,6 +905,21 @@
         legend.classList.remove('hidden');
     }
 
+    // Update layer description section
+    function updateAboutLayer(layerKey) {
+        const layerDescription = document.getElementById('layer-description');
+
+        const layerInfo = LAYER_INFO[layerKey];
+        if (layerInfo) {
+            layerDescription.innerHTML = `
+                <p class="mb-1"><strong>Source:</strong> ${layerInfo.source}</p>
+                <p><strong>Note:</strong> ${layerInfo.description}</p>
+            `;
+            // Hide content by default when switching layers
+            layerDescription.classList.add('hidden');
+        }
+    }
+
     function toggleBasemapSettings() {
         const panel = document.getElementById('basemap-settings');
         const arrow = document.getElementById('basemap-arrow');
@@ -832,14 +931,14 @@
         currentBasemap = newStyle;
         map.setStyle(BASEMAP_STYLES[newStyle]);
 
-        // Update button borders
+        // Update button borders to show active state
         document.querySelectorAll('#basemap-style-thumbnails button').forEach(btn => {
             if (btn.dataset.style === newStyle) {
-                btn.classList.remove('border-gray-300');
-                btn.classList.add('border-gray-400');
+                btn.classList.remove('border-white');
+                btn.classList.add('border-gray-500');
             } else {
-                btn.classList.remove('border-gray-400');
-                btn.classList.add('border-gray-300');
+                btn.classList.remove('border-gray-500');
+                btn.classList.add('border-white');
             }
         });
 
@@ -953,17 +1052,31 @@
     layerSelect.addEventListener('change', function(e) {
         const selectedValue = e.target.value;
         console.log('Layer selector changed to:', selectedValue);
-        if (!selectedValue) {
+
+        if (!selectedValue || selectedValue === 'blank') {
+            // Clear the layer
             updateDataLayer(null, null);
+            // Reset to "Select data layer"
+            layerSelect.value = '';
         } else {
             const [layerType, attribute] = selectedValue.split(':');
             console.log('Updating data layer:', layerType, attribute);
             updateDataLayer(layerType, attribute);
+            // Switch to blank option to show just the arrow
+            setTimeout(() => {
+                layerSelect.value = 'blank';
+            }, 100);
         }
     });
 
     // Basemap toggle
     document.getElementById('basemap-toggle').addEventListener('click', toggleBasemapSettings);
+
+    // Layer info toggle
+    document.getElementById('layer-info').addEventListener('click', function() {
+        const description = document.getElementById('layer-description');
+        description.classList.toggle('hidden');
+    });
 
     // Basemap style buttons
     document.querySelectorAll('#basemap-style-thumbnails button').forEach(button => {
@@ -981,46 +1094,26 @@
         map.zoomOut();
     });
 
+    // Reset extent button
     document.getElementById('reset-extent').addEventListener('click', function() {
         console.log('Reset extent clicked');
-        // Reset to initial extent based on custom center/zoom or county bounds
+        // Reset to initial extent based on custom center/zoom or stored county bounds
         if (CUSTOM_CENTER && CUSTOM_ZOOM) {
             map.flyTo({
                 center: CUSTOM_CENTER,
                 zoom: CUSTOM_ZOOM,
                 duration: 1000
             });
-        } else {
-            // Query county features and fit bounds
-            const countyFeatures = map.querySourceFeatures('counties-source', {
-                sourceLayer: 'states',
-                filter: ['==', ['get', 'GEOID'], COUNTY_GEOID]
+        } else if (initialCountyBounds) {
+            // Use the stored initial county bounds
+            map.fitBounds(initialCountyBounds, {
+                padding: 50,
+                duration: 1000
             });
-
-            if (countyFeatures.length > 0) {
-                const bounds = new mapboxgl.LngLatBounds();
-
-                countyFeatures.forEach(feature => {
-                    if (feature.geometry.type === 'Polygon') {
-                        feature.geometry.coordinates[0].forEach(coord => {
-                            bounds.extend(coord);
-                        });
-                    } else if (feature.geometry.type === 'MultiPolygon') {
-                        feature.geometry.coordinates.forEach(polygon => {
-                            polygon[0].forEach(coord => {
-                                bounds.extend(coord);
-                            });
-                        });
-                    }
-                });
-
-                map.fitBounds(bounds, {
-                    padding: 50,
-                    duration: 1000
-                });
-            } else {
-                console.warn('Could not find county features for reset');
-            }
+        } else {
+            // Fallback: try to query and fit
+            console.warn('Initial county bounds not yet loaded, attempting to fit...');
+            fitMapToCountyAPI();
         }
     });
 
