@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>County Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Mapbox GL JS -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+
+    <!-- Material UI icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <!-- Roboto font -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        .material-icons-outlined {
+            font-size: 1.25rem;
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-display: swap;
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .mapboxgl-popup {
+            max-width: 250px;
+            font-family: 'Roboto', sans-serif;
+            font-size: 0.875rem;
+        }
+
+        .mapboxgl-popup-content {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+            color: #1f2937;
+        }
+
+        .mapboxgl-popup-close-button {
+            font-size: 1.2rem;
+            top: 0.5rem;
+            right: 0.5rem;
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+
+<div class="flex h-screen w-screen">
+    <!-- Sidebar -->
+    <div id="sidebar" class="w-80 bg-white border-r border-gray-300 shadow-xl p-4 overflow-y-auto z-10">
+        <div class="flex flex-col h-full">
+            <h2 id="map-title" class="text-xl font-semibold mb-5"></h2>
+
+            <div class="overflow-y-auto flex-grow">
+                <!-- Data layer selector -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Data Layer</label>
+                    <select id="layer-select" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+                        <option value="" selected>No data layer</option>
+                        <option value="pctrent30_23">Percent of renters cost burdened (2023)</option>
+                        <option value="pctowned30_23">Percent of homeowners cost burdened (2023)</option>
+                        <option value="total_cb_rt_23">Total cost burden rate (2023)</option>
+                        <option value="hh_change_23_20">Household change 2020-2023 (%)</option>
+                        <option value="median_hh_income_23">Median household income (2023)</option>
+                        <option value="pop_23">Population (2023)</option>
+                        <option value="housing_unit_count_23">Housing unit count (2023)</option>
+                        <option value="total_hh_23">Total households (2023)</option>
+                    </select>
+                </div>
+
+                <!-- Legend container -->
+                <div id="legend" class="mt-4 pb-4 hidden">
+                    <h3 id="legend-title" class="font-medium mb-2 text-gray-800"></h3>
+                    <div id="legend-content" class="space-y-1 text-sm text-gray-700 mb-2">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Basemap toggle section -->
+            <div id="basemap-wrapper" class="border-t border-gray-300 w-full mt-auto pt-3">
+                <button
+                    id="basemap-toggle"
+                    class="w-full px-2 py-2 flex items-center justify-between bg-gray-100 hover:bg-gray-200 text-sm font-medium rounded"
+                >
+                    <span class="flex items-center gap-1">
+                        <span class="material-icons align-text-bottom">map</span>
+                        Basemap
+                    </span>
+                    <svg id="basemap-arrow" class="w-4 h-4 transform transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+
+                <!-- Basemap options -->
+                <div id="basemap-settings" class="hidden mt-2 space-y-3 text-sm text-gray-700">
+                    <div id="basemap-style-thumbnails" class="flex gap-2">
+                        <button data-style="gray" class="flex-1 border-2 border-gray-400 rounded p-1 bg-gray-200 hover:border-gray-600">
+                            <div class="aspect-video bg-gray-300 rounded text-xs flex items-center justify-center">Gray</div>
+                        </button>
+                        <button data-style="satellite" class="flex-1 border-2 border-gray-300 rounded p-1 hover:border-gray-600">
+                            <div class="aspect-video bg-green-800 rounded text-xs flex items-center justify-center text-white">Satellite</div>
+                        </button>
+                        <button data-style="lightSatellite" class="flex-1 border-2 border-gray-300 rounded p-1 hover:border-gray-600">
+                            <div class="aspect-video bg-green-600 rounded text-xs flex items-center justify-center text-white">Light Sat</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Map container -->
+    <div id="map" class="flex-grow relative"></div>
+</div>
+
+<script>
+    // ============================================
+    // CONFIGURATION - Edit these values
+    // ============================================
+
+    // County of interest - change this to analyze a different county
+    const COUNTY_NAME = 'Cook County';
+    const COUNTY_GEOID = '17031';  // Cook County, IL GEOID (State FIPS 17 + County FIPS 031)
+    const STATE_NAME = 'Illinois';
+
+    // Optional: Custom initial map view (leave null to auto-fit to county)
+    // If set, these will override the automatic zoom-to-county behavior
+    const CUSTOM_CENTER = null;  // Example: [-122.3321, 47.6062] for Seattle
+    const CUSTOM_ZOOM = null;    // Example: 10 for city-level view
+
+    // Mapbox access token
+    mapboxgl.accessToken = 'pk.eyJ1IjoiY29tbXVuaXR5c2NhbGUiLCJhIjoiY21hZ3Y4azlmMDU5YTJqb2NqbzRsa3psbSJ9.eJlBVHcMSB88Czl3ti2i5g';
+
+    // Basemap styles
+    const BASEMAP_STYLES = {
+        gray: 'mapbox://styles/communityscale/cmgicidwh007k01qdauae93b0',
+        satellite: 'mapbox://styles/communityscale/cmgidsjne002c01qne3nf930s',
+        lightSatellite: 'mapbox://styles/communityscale/cmgidu19b00n301sb0jcihsuk'
+    };
+
+    // Tileset IDs
+    const TILESETS = {
+        counties: 'communityscale.counties',
+        tracts: 'communityscale.tracts-2020',
+        zipcodes: 'communityscale.zipcodes'
+    };
+
+    // Color palette (darkest to lightest, darkest = highest values)
+    const COLOR_PALETTE = ['#192f5e', '#3445b0', '#6e79dd', '#8795eb', '#adbfff', '#c2d8ff'];
+
+    // Data storage
+    let tractData = null;
+    let currentDataLayer = null;
+
+    // Initial map settings (will be updated to fit county)
+    let currentBasemap = 'gray';
+
+    // ============================================
+    // MAP INITIALIZATION
+    // ============================================
+
+    // Use custom center/zoom if provided, otherwise start at US-wide view
+    const initialCenter = CUSTOM_CENTER || [-98, 39];
+    const initialZoom = CUSTOM_ZOOM || 3;
+
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: BASEMAP_STYLES[currentBasemap],
+        center: initialCenter,
+        zoom: initialZoom,
+        maxZoom: 22
+    });
+
+    // Update page title and sidebar heading with county name
+    document.title = COUNTY_NAME + ', ' + STATE_NAME + ' - Map';
+    document.getElementById('map-title').textContent = COUNTY_NAME + ', ' + STATE_NAME;
+
+    // Add error logging
+    map.on('error', function(e) {
+        console.error('Map error:', e);
+    });
+
+    map.on('styleimagemissing', function(e) {
+        console.warn('Style image missing:', e);
+    });
+
+    // ============================================
+    // MAP LOAD EVENT
+    // ============================================
+
+    map.on('load', function() {
+        // Add county boundaries source and layer
+        map.addSource('counties-source', {
+            type: 'vector',
+            url: 'mapbox://' + TILESETS.counties
+        });
+
+
+        // Add county layer with correct source-layer name: "states"
+        map.addLayer({
+            id: 'counties-fill',
+            type: 'fill',
+            source: 'counties-source',
+            'source-layer': 'states',
+            paint: {
+                'fill-color': 'transparent',
+                'fill-opacity': 0
+            }
+        });
+
+        map.addLayer({
+            id: 'counties-outline',
+            type: 'line',
+            source: 'counties-source',
+            'source-layer': 'states',
+            paint: {
+                'line-color': '#1f2937',
+                'line-width': 2.5
+            },
+            filter: ['==', ['get', 'GEOID'], COUNTY_GEOID]
+        });
+
+        // Add census tracts source and layer
+        map.addSource('tracts-source', {
+            type: 'vector',
+            url: 'mapbox://' + TILESETS.tracts
+        });
+
+        map.addLayer({
+            id: 'tracts-outline',
+            type: 'line',
+            source: 'tracts-source',
+            'source-layer': 'tracts',
+            paint: {
+                'line-color': '#6b7280',
+                'line-width': 0.5,
+                'line-opacity': 0.6
+            },
+            filter: [
+                'all',
+                ['has', 'GEOID'],
+                ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
+            ]
+        });
+
+        // Add zip codes source and layer (hidden for now)
+        // map.addSource('zipcodes-source', {
+        //     type: 'vector',
+        //     url: 'mapbox://' + TILESETS.zipcodes
+        // });
+
+        // map.addLayer({
+        //     id: 'zipcodes-outline',
+        //     type: 'line',
+        //     source: 'zipcodes-source',
+        //     'source-layer': 'zipcodes',
+        //     paint: {
+        //         'line-color': '#9ca3af',
+        //         'line-width': 1,
+        //         'line-opacity': 0.5,
+        //         'line-dasharray': [2, 2]
+        //     },
+        //     filter: ['==', ['get', 'COUNTY'], COUNTY_ID]
+        // });
+
+
+        // Load tract data from JSON
+        fetch('CTs_Illinois_251016.json')
+            .then(response => response.json())
+            .then(data => {
+                tractData = data;
+                console.log('Loaded', tractData.length, 'tract records');
+            })
+            .catch(error => console.error('Error loading tract data:', error));
+
+        // Fit to county boundary (unless custom center/zoom is specified)
+        if (!CUSTOM_CENTER && !CUSTOM_ZOOM) {
+            fitMapToCountyAPI();
+        }
+    });
+
+    // ============================================
+    // FUNCTIONS
+    // ============================================
+
+    function fitMapToCountyAPI() {
+        // Use Mapbox Datasets API to get county geometry directly
+        // This is more reliable than querying rendered tiles
+        const tilesUrl = `https://api.mapbox.com/v4/${TILESETS.counties}/tilequery/-98,39.json?access_token=${mapboxgl.accessToken}`;
+
+        // Alternative: Use a GeoJSON source approach
+        // For now, let's use a retry mechanism with zooming
+        let attempts = 0;
+        const maxAttempts = 10;
+
+        function tryFit() {
+            attempts++;
+
+            // First zoom to state level to load tiles
+            const stateZoom = 6;
+            const stateCenters = {
+                '01': [-86.8, 32.8], // Alabama
+                '02': [-152.0, 64.0], // Alaska
+                '04': [-111.7, 34.3], // Arizona
+                '05': [-92.4, 34.9], // Arkansas
+                '06': [-119.7, 37.2], // California
+                '08': [-105.5, 39.0], // Colorado
+                '09': [-72.7, 41.6], // Connecticut
+                '10': [-75.5, 38.9], // Delaware
+                '11': [-77.0, 38.9], // District of Columbia
+                '12': [-81.5, 28.5], // Florida
+                '13': [-83.4, 32.6], // Georgia
+                '15': [-157.5, 20.6], // Hawaii
+                '16': [-114.6, 44.4], // Idaho
+                '17': [-89.4, 40.1], // Illinois
+                '18': [-86.3, 40.0], // Indiana
+                '19': [-93.5, 42.0], // Iowa
+                '20': [-98.4, 38.5], // Kansas
+                '21': [-85.3, 37.5], // Kentucky
+                '22': [-91.8, 30.9], // Louisiana
+                '23': [-69.2, 45.4], // Maine
+                '24': [-76.8, 39.0], // Maryland
+                '25': [-71.8, 42.3], // Massachusetts
+                '26': [-85.0, 44.3], // Michigan
+                '27': [-94.3, 46.4], // Minnesota
+                '28': [-89.7, 32.7], // Mississippi
+                '29': [-92.5, 38.4], // Missouri
+                '30': [-110.0, 47.0], // Montana
+                '31': [-99.8, 41.5], // Nebraska
+                '32': [-116.6, 39.3], // Nevada
+                '33': [-71.6, 43.7], // New Hampshire
+                '34': [-74.6, 40.2], // New Jersey
+                '35': [-106.1, 34.4], // New Mexico
+                '36': [-75.5, 43.0], // New York
+                '37': [-79.5, 35.6], // North Carolina
+                '38': [-100.5, 47.4], // North Dakota
+                '39': [-82.7, 40.2], // Ohio
+                '40': [-97.5, 35.6], // Oklahoma
+                '41': [-120.6, 43.9], // Oregon
+                '42': [-77.7, 40.9], // Pennsylvania
+                '44': [-71.5, 41.7], // Rhode Island
+                '45': [-80.9, 33.9], // South Carolina
+                '46': [-100.2, 44.4], // South Dakota
+                '47': [-86.4, 35.9], // Tennessee
+                '48': [-99.3, 31.5], // Texas
+                '49': [-111.7, 39.4], // Utah
+                '50': [-72.7, 44.0], // Vermont
+                '51': [-78.8, 37.5], // Virginia
+                '53': [-120.7, 47.4], // Washington
+                '54': [-80.6, 38.6], // West Virginia
+                '55': [-89.7, 44.6], // Wisconsin
+                '56': [-107.6, 43.0], // Wyoming
+                '72': [-66.4, 18.2]  // Puerto Rico
+            };
+
+            const stateFIPS = COUNTY_GEOID.substring(0, 2);
+            const stateCenter = stateCenters[stateFIPS] || [-98, 39];
+
+            if (attempts === 1) {
+                // First attempt: zoom to state
+                map.setCenter(stateCenter);
+                map.setZoom(stateZoom);
+                setTimeout(tryFit, 500);
+                return;
+            }
+
+            // Query features at current zoom
+            const countyFeatures = map.querySourceFeatures('counties-source', {
+                sourceLayer: 'states',
+                filter: ['==', ['get', 'GEOID'], COUNTY_GEOID]
+            });
+
+            if (countyFeatures.length > 0) {
+                const bounds = new mapboxgl.LngLatBounds();
+
+                countyFeatures.forEach(feature => {
+                    if (feature.geometry.type === 'Polygon') {
+                        feature.geometry.coordinates[0].forEach(coord => {
+                            bounds.extend(coord);
+                        });
+                    } else if (feature.geometry.type === 'MultiPolygon') {
+                        feature.geometry.coordinates.forEach(polygon => {
+                            polygon[0].forEach(coord => {
+                                bounds.extend(coord);
+                            });
+                        });
+                    }
+                });
+
+                map.fitBounds(bounds, {
+                    padding: 50,
+                    duration: 0
+                });
+            } else if (attempts < maxAttempts) {
+                // Retry
+                setTimeout(tryFit, 300);
+            } else {
+                console.warn('Could not find county after', maxAttempts, 'attempts. GEOID:', COUNTY_GEOID);
+            }
+        }
+
+        // Wait for source to load, then start trying
+        map.on('sourcedata', function handler(e) {
+            if (e.sourceId === 'counties-source' && e.isSourceLoaded) {
+                map.off('sourcedata', handler);
+                tryFit();
+            }
+        });
+    }
+
+    // Calculate quantile breaks for a given attribute
+    function calculateQuantiles(attribute, numBuckets = 6) {
+        if (!tractData) return null;
+
+        // Filter data for current county
+        const countyData = tractData
+            .filter(d => d.geoid.startsWith(COUNTY_GEOID))
+            .map(d => d[attribute])
+            .filter(v => v !== null && v !== undefined && !isNaN(v))
+            .sort((a, b) => a - b);
+
+        if (countyData.length === 0) return null;
+
+        const breaks = [];
+        for (let i = 0; i <= numBuckets; i++) {
+            const position = (i / numBuckets) * (countyData.length - 1);
+            const lower = Math.floor(position);
+            const upper = Math.ceil(position);
+            const weight = position - lower;
+            breaks.push(countyData[lower] * (1 - weight) + countyData[upper] * weight);
+        }
+
+        return breaks;
+    }
+
+    // Create fill color expression for data layer
+    function createFillColorExpression(attribute, breaks) {
+        const expression = ['case'];
+
+        // Reverse loop to assign darkest colors to highest values
+        for (let i = breaks.length - 2; i >= 0; i--) {
+            expression.push(
+                ['>=', ['get', attribute], breaks[i]],
+                COLOR_PALETTE[breaks.length - 2 - i]
+            );
+        }
+
+        expression.push('#cccccc'); // Default color for no data
+        return expression;
+    }
+
+    // Update data layer
+    function updateDataLayer(attribute) {
+        if (!tractData || !attribute) {
+            // Remove data layer
+            if (map.getLayer('tracts-data')) {
+                map.removeLayer('tracts-data');
+            }
+            if (map.getSource('tracts-data-source')) {
+                map.removeSource('tracts-data-source');
+            }
+            document.getElementById('legend').classList.add('hidden');
+            currentDataLayer = null;
+            return;
+        }
+
+        const breaks = calculateQuantiles(attribute, 6);
+        if (!breaks) {
+            console.warn('Could not calculate breaks for', attribute);
+            return;
+        }
+
+        // Filter data for current county and create GeoJSON
+        const countyTracts = tractData.filter(d => d.geoid.startsWith(COUNTY_GEOID));
+
+        // Create property lookup for join
+        const dataLookup = {};
+        countyTracts.forEach(d => {
+            dataLookup[d.geoid] = d[attribute];
+        });
+
+        // Add or update data source - using the existing tract geometries
+        if (!map.getSource('tracts-data-source')) {
+            // Clone the tracts source
+            map.addSource('tracts-data-source', {
+                type: 'vector',
+                url: 'mapbox://' + TILESETS.tracts
+            });
+        }
+
+        // Remove existing layer if present
+        if (map.getLayer('tracts-data')) {
+            map.removeLayer('tracts-data');
+        }
+
+        // Create data-driven fill expression using feature-state or direct lookup
+        // We'll use a case expression based on GEOID
+        const fillExpression = ['case'];
+        countyTracts.forEach(d => {
+            const value = d[attribute];
+            if (value !== null && value !== undefined) {
+                // Find which bucket this value falls into
+                let colorIndex = 5; // Default to lightest
+                for (let i = breaks.length - 2; i >= 0; i--) {
+                    if (value >= breaks[i]) {
+                        colorIndex = breaks.length - 2 - i;
+                        break;
+                    }
+                }
+                fillExpression.push(['==', ['get', 'GEOID'], d.geoid]);
+                fillExpression.push(COLOR_PALETTE[colorIndex]);
+            }
+        });
+        fillExpression.push('#eeeeee'); // Default
+
+        // Add data layer
+        map.addLayer({
+            id: 'tracts-data',
+            type: 'fill',
+            source: 'tracts-data-source',
+            'source-layer': 'tracts',
+            paint: {
+                'fill-color': fillExpression,
+                'fill-opacity': 0.7
+            },
+            filter: [
+                'all',
+                ['has', 'GEOID'],
+                ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
+            ]
+        }, 'tracts-outline'); // Add below tract outlines
+
+        currentDataLayer = attribute;
+        updateLegend(attribute, breaks);
+    }
+
+    // Update legend
+    function updateLegend(attribute, breaks) {
+        const legendTitle = document.getElementById('legend-title');
+        const legendContent = document.getElementById('legend-content');
+        const legend = document.getElementById('legend');
+
+        // Get layer name from dropdown
+        const select = document.getElementById('layer-select');
+        const selectedOption = select.options[select.selectedIndex];
+        const layerName = selectedOption.text;
+
+        legendTitle.textContent = layerName;
+        legendContent.innerHTML = '';
+
+        // Format values based on attribute type
+        function formatValue(val) {
+            if (attribute.includes('pct') || attribute.includes('rate') || attribute.includes('change')) {
+                return Math.round(val * 100) + '%';
+            } else if (attribute.includes('income')) {
+                return '$' + Math.round(val).toLocaleString();
+            } else {
+                return Math.round(val).toLocaleString();
+            }
+        }
+
+        // Create legend items (reverse order so highest is on top)
+        for (let i = breaks.length - 2; i >= 0; i--) {
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-2';
+
+            const colorBox = document.createElement('div');
+            colorBox.className = 'w-4 h-4 rounded border border-gray-300 flex-shrink-0';
+            colorBox.style.backgroundColor = COLOR_PALETTE[breaks.length - 2 - i];
+
+            const label = document.createElement('span');
+            label.className = 'text-xs';
+            if (i === breaks.length - 2) {
+                label.textContent = formatValue(breaks[i]) + ' or more';
+            } else {
+                label.textContent = formatValue(breaks[i]) + ' to ' + formatValue(breaks[i + 1]);
+            }
+
+            div.appendChild(colorBox);
+            div.appendChild(label);
+            legendContent.appendChild(div);
+        }
+
+        legend.classList.remove('hidden');
+    }
+
+    function toggleBasemapSettings() {
+        const panel = document.getElementById('basemap-settings');
+        const arrow = document.getElementById('basemap-arrow');
+        panel.classList.toggle('hidden');
+        arrow.classList.toggle('rotate-180');
+    }
+
+    function switchBasemap(newStyle) {
+        currentBasemap = newStyle;
+        map.setStyle(BASEMAP_STYLES[newStyle]);
+
+        // Update button borders
+        document.querySelectorAll('#basemap-style-thumbnails button').forEach(btn => {
+            if (btn.dataset.style === newStyle) {
+                btn.classList.remove('border-gray-300');
+                btn.classList.add('border-gray-400');
+            } else {
+                btn.classList.remove('border-gray-400');
+                btn.classList.add('border-gray-300');
+            }
+        });
+
+        // Re-add layers after style changes
+        map.once('style.load', function() {
+            // Re-add all sources and layers
+            map.addSource('counties-source', {
+                type: 'vector',
+                url: 'mapbox://' + TILESETS.counties
+            });
+
+            map.addLayer({
+                id: 'counties-fill',
+                type: 'fill',
+                source: 'counties-source',
+                'source-layer': 'states',
+                paint: {
+                    'fill-color': 'transparent',
+                    'fill-opacity': 0
+                }
+            });
+
+            map.addLayer({
+                id: 'counties-outline',
+                type: 'line',
+                source: 'counties-source',
+                'source-layer': 'states',
+                paint: {
+                    'line-color': '#1f2937',
+                    'line-width': 2.5
+                },
+                filter: ['==', ['get', 'GEOID'], COUNTY_GEOID]
+            });
+
+            map.addSource('tracts-source', {
+                type: 'vector',
+                url: 'mapbox://' + TILESETS.tracts
+            });
+
+            map.addLayer({
+                id: 'tracts-outline',
+                type: 'line',
+                source: 'tracts-source',
+                'source-layer': 'tracts',
+                paint: {
+                    'line-color': '#6b7280',
+                    'line-width': 0.5,
+                    'line-opacity': 0.6
+                },
+                filter: [
+                    'all',
+                    ['has', 'GEOID'],
+                    ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
+                ]
+            });
+
+            // Zip codes layer removed for now
+        });
+    }
+
+    // ============================================
+    // EVENT LISTENERS
+    // ============================================
+
+    // Layer selector dropdown
+    document.getElementById('layer-select').addEventListener('change', function(e) {
+        const selectedAttribute = e.target.value;
+        updateDataLayer(selectedAttribute || null);
+    });
+
+    // Basemap toggle
+    document.getElementById('basemap-toggle').addEventListener('click', toggleBasemapSettings);
+
+    // Basemap style buttons
+    document.querySelectorAll('#basemap-style-thumbnails button').forEach(button => {
+        button.addEventListener('click', function() {
+            switchBasemap(this.dataset.style);
+        });
+    });
+
+    // Add click handlers for popups on tracts
+    map.on('click', 'tracts-outline', function(e) {
+        const properties = e.features[0].properties;
+        let popupHTML = `
+            <div class="popup-content">
+                <div class="font-semibold mb-1">Census Tract</div>
+                <p><strong>GEOID:</strong> ${properties.GEOID || 'N/A'}</p>
+                <p><strong>Name:</strong> ${properties.NAME || 'N/A'}</p>`;
+
+        // Add data value if a layer is selected
+        if (currentDataLayer && tractData) {
+            const tractInfo = tractData.find(d => d.geoid === properties.GEOID);
+            if (tractInfo && tractInfo[currentDataLayer] !== null && tractInfo[currentDataLayer] !== undefined) {
+                const value = tractInfo[currentDataLayer];
+                let formattedValue;
+                if (currentDataLayer.includes('pct') || currentDataLayer.includes('rate') || currentDataLayer.includes('change')) {
+                    formattedValue = Math.round(value * 100) + '%';
+                } else if (currentDataLayer.includes('income')) {
+                    formattedValue = '$' + Math.round(value).toLocaleString();
+                } else {
+                    formattedValue = Math.round(value).toLocaleString();
+                }
+
+                const select = document.getElementById('layer-select');
+                const selectedOption = select.options[select.selectedIndex];
+                const layerName = selectedOption.text;
+
+                popupHTML += `<p><strong>${layerName}:</strong> ${formattedValue}</p>`;
+            }
+        }
+
+        popupHTML += `</div>`;
+
+        new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(popupHTML)
+            .addTo(map);
+    });
+
+    // Add click handler for county
+    map.on('click', 'counties-outline', function(e) {
+        const properties = e.features[0].properties;
+        new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(`
+                <div class="popup-content">
+                    <div class="font-semibold mb-1">County</div>
+                    <p><strong>Name:</strong> ${properties.NAME || 'N/A'}</p>
+                    <p><strong>GEOID:</strong> ${properties.GEOID || 'N/A'}</p>
+                    <p><strong>State:</strong> ${properties.STATE || 'N/A'}</p>
+                </div>
+            `)
+            .addTo(map);
+    });
+
+    // Zip code handlers removed (layer commented out)
+
+    // Change cursor on hover
+    map.on('mouseenter', 'tracts-outline', function() {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+
+    map.on('mouseleave', 'tracts-outline', function() {
+        map.getCanvas().style.cursor = '';
+    });
+
+    map.on('mouseenter', 'counties-outline', function() {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+
+    map.on('mouseleave', 'counties-outline', function() {
+        map.getCanvas().style.cursor = '';
+    });
+</script>
+
+</body>
+</html>
