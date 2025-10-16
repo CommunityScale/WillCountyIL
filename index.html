@@ -142,7 +142,22 @@
     </div>
 
     <!-- Map container -->
-    <div id="map" class="flex-grow relative"></div>
+    <div id="map" class="flex-grow relative">
+        <!-- Map controls -->
+        <div class="absolute top-4 right-4 flex flex-col gap-2 z-10">
+            <button id="zoom-in" class="bg-white hover:bg-gray-100 rounded shadow-lg w-10 h-10 flex items-center justify-center text-gray-700 font-bold text-xl border border-gray-300">
+                +
+            </button>
+            <button id="zoom-out" class="bg-white hover:bg-gray-100 rounded shadow-lg w-10 h-10 flex items-center justify-center text-gray-700 font-bold text-xl border border-gray-300">
+                −
+            </button>
+            <button id="reset-extent" class="bg-white hover:bg-gray-100 rounded shadow-lg w-10 h-10 flex items-center justify-center text-gray-700 border border-gray-300" title="Reset to initial extent">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="2" width="16" height="16" rx="1"/>
+                </svg>
+            </button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -961,6 +976,58 @@
         button.addEventListener('click', function() {
             switchBasemap(this.dataset.style);
         });
+    });
+
+    // Zoom controls
+    document.getElementById('zoom-in').addEventListener('click', function() {
+        map.zoomIn();
+    });
+
+    document.getElementById('zoom-out').addEventListener('click', function() {
+        map.zoomOut();
+    });
+
+    document.getElementById('reset-extent').addEventListener('click', function() {
+        console.log('Reset extent clicked');
+        // Reset to initial extent based on custom center/zoom or county bounds
+        if (CUSTOM_CENTER && CUSTOM_ZOOM) {
+            map.flyTo({
+                center: CUSTOM_CENTER,
+                zoom: CUSTOM_ZOOM,
+                duration: 1000
+            });
+        } else {
+            // Query county features and fit bounds
+            const countyFeatures = map.querySourceFeatures('counties-source', {
+                sourceLayer: 'states',
+                filter: ['==', ['get', 'GEOID'], COUNTY_GEOID]
+            });
+
+            if (countyFeatures.length > 0) {
+                const bounds = new mapboxgl.LngLatBounds();
+
+                countyFeatures.forEach(feature => {
+                    if (feature.geometry.type === 'Polygon') {
+                        feature.geometry.coordinates[0].forEach(coord => {
+                            bounds.extend(coord);
+                        });
+                    } else if (feature.geometry.type === 'MultiPolygon') {
+                        feature.geometry.coordinates.forEach(polygon => {
+                            polygon[0].forEach(coord => {
+                                bounds.extend(coord);
+                            });
+                        });
+                    }
+                });
+
+                map.fitBounds(bounds, {
+                    padding: 50,
+                    duration: 1000
+                });
+            } else {
+                console.warn('Could not find county features for reset');
+            }
+        }
     });
 
     // Function to show tract popup
