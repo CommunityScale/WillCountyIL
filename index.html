@@ -440,7 +440,7 @@
             filter: [
                 'all',
                 ['has', 'GEOID'],
-                ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
+                ['==', ['slice', ['get', 'GEOID'], 0, 2], stateFIPS]
             ]
         }, firstSymbolId);
 
@@ -474,15 +474,22 @@
                         source: 'zipcodes-source',
                         'source-layer': sourceLayer,
                         paint: {
-                            'line-color': '#9ca3af',
-                            'line-width': 1,
-                            'line-opacity': 0.5,
-                            'line-dasharray': [2, 2]
+                            'line-color': '#6b7280',
+                            'line-width': 0.5,
+                            'line-opacity': 0.6
+                        },
+                        layout: {
+                            'visibility': 'none' // Hidden by default
                         },
                         filter: [
                             'all',
                             ['has', 'GEOID20'],
-                            ['==', ['slice', ['get', 'GEOID20'], 0, 5], COUNTY_GEOID]
+                            [
+                                'any',
+                                ['==', ['slice', ['to-string', ['get', 'GEOID20']], 0, 2], '60'],
+                                ['==', ['slice', ['to-string', ['get', 'GEOID20']], 0, 2], '61'],
+                                ['==', ['slice', ['to-string', ['get', 'GEOID20']], 0, 2], '62']
+                            ]
                         ]
                     }, firstSymbolId);
                 }
@@ -669,6 +676,10 @@
             if (map.getLayer('tracts-outline')) {
                 map.setLayoutProperty('tracts-outline', 'visibility', 'none');
             }
+            // Hide zipcode outline when no data layer is selected
+            if (map.getLayer('zipcodes-outline')) {
+                map.setLayoutProperty('zipcodes-outline', 'visibility', 'none');
+            }
             return;
         }
 
@@ -678,6 +689,15 @@
                 map.setLayoutProperty('tracts-outline', 'visibility', 'visible');
             } else {
                 map.setLayoutProperty('tracts-outline', 'visibility', 'none');
+            }
+        }
+
+        // Show/hide zipcode outline based on layer type
+        if (map.getLayer('zipcodes-outline')) {
+            if (layerType === 'zip') {
+                map.setLayoutProperty('zipcodes-outline', 'visibility', 'visible');
+            } else {
+                map.setLayoutProperty('zipcodes-outline', 'visibility', 'none');
             }
         }
 
@@ -1050,7 +1070,7 @@
                 filter: [
                     'all',
                     ['has', 'GEOID'],
-                    ['==', ['slice', ['get', 'GEOID'], 0, 5], COUNTY_GEOID]
+                    ['==', ['slice', ['get', 'GEOID'], 0, 2], stateFIPS]
                 ]
             }, firstSymbolId);
 
@@ -1082,15 +1102,22 @@
                             source: 'zipcodes-source',
                             'source-layer': sourceLayer,
                             paint: {
-                                'line-color': '#9ca3af',
-                                'line-width': 1,
-                                'line-opacity': 0.5,
-                                'line-dasharray': [2, 2]
+                                'line-color': '#6b7280',
+                                'line-width': 0.5,
+                                'line-opacity': 0.6
+                            },
+                            layout: {
+                                'visibility': 'none' // Hidden by default
                             },
                             filter: [
                                 'all',
                                 ['has', 'GEOID20'],
-                                ['==', ['slice', ['get', 'GEOID20'], 0, 5], COUNTY_GEOID]
+                                [
+                                    'any',
+                                    ['==', ['slice', ['to-string', ['get', 'GEOID20']], 0, 2], '60'],
+                                    ['==', ['slice', ['to-string', ['get', 'GEOID20']], 0, 2], '61'],
+                                    ['==', ['slice', ['to-string', ['get', 'GEOID20']], 0, 2], '62']
+                                ]
                             ]
                         }, firstSymbolId);
                     }
