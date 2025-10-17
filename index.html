@@ -103,9 +103,9 @@
                             <option value="tract:total_cb_rt_23">Total cost burden rate (2023)</option>
                             <option value="tract:hh_change_23_20">Household change 2020-2023 (%)</option>
                             <option value="tract:median_hh_income_23">Median household income (2023)</option>
-                            <option value="tract:pop_23">Population (2023)</option>
-                            <option value="tract:housing_unit_count_23">Housing unit count (2023)</option>
-                            <option value="tract:total_hh_23">Total households (2023)</option>
+                            <!-- <option value="tract:pop_23">Population (2023)</option> -->
+                            <!-- <option value="tract:housing_unit_count_23">Housing unit count (2023)</option> -->
+                            <!-- <option value="tract:total_hh_23">Total households (2023)</option> -->
                         </optgroup>
                         <optgroup label="Zip Code Data (Zillow)">
                             <option value="zip:zhvi_20">Typical home value 2020 (ZHVI)</option>
@@ -952,10 +952,11 @@
 
         const layerInfo = LAYER_INFO[layerKey];
         if (layerInfo) {
-            layerDescription.innerHTML = `
-                <p class="mb-1"><strong>Source:</strong> ${layerInfo.source}</p>
-                <p><strong>Note:</strong> ${layerInfo.description}</p>
-            `;
+            let html = `<p class="mb-1"><strong>Source:</strong> ${layerInfo.source}</p>`;
+            if (layerInfo.description) {
+                html += `<p><strong>Note:</strong> ${layerInfo.description}</p>`;
+            }
+            layerDescription.innerHTML = html;
             // Hide content by default when switching layers
             layerDescription.classList.add('hidden');
         }
