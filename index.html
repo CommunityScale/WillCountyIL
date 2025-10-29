@@ -130,7 +130,7 @@
             </div>
 
             <!-- Overlays section -->
-            <div id="overlay-wrapper" class="border-t border-gray-300 w-full mt-auto pt-3">
+            <div id="overlay-wrapper" class="border-t border-gray-300 w-full mt-auto pt-3 pb-3">
                 <button
                     id="overlay-toggle"
                     class="w-full pl-0 pr-2 py-2 flex items-center justify-between bg-white hover:bg-gray-100 text-sm font-medium rounded"
@@ -817,17 +817,10 @@
             // Create a match expression to only show tracts in our data
             const matchFilter = ['match', ['get', 'GEOID'], validTractGEOIDs, true, false];
 
-            // Determine where to insert the layer - before overlay layers so overlays appear on top of data
+            // Determine where to insert the layer - always before counties-outline to keep county boundary on top
+            // This ensures the layer order is: data layers -> county outline -> overlay layers
             let insertBeforeLayer = null;
-            const overlayLayerIds = ['subregions-outline'];
-            for (const overlayId of overlayLayerIds) {
-                if (map.getLayer(overlayId)) {
-                    insertBeforeLayer = overlayId;
-                    break;
-                }
-            }
-            // Fallback to counties-outline if no overlays exist
-            if (!insertBeforeLayer && map.getLayer('counties-outline')) {
+            if (map.getLayer('counties-outline')) {
                 insertBeforeLayer = 'counties-outline';
             }
 
@@ -957,17 +950,10 @@
                         // Use GEOID20 which is the actual property name in the tileset
                         const matchFilter = ['match', ['to-string', ['get', 'GEOID20']], validZipGEOIDs, true, false];
 
-                        // Determine where to insert the layer - before overlay layers so overlays appear on top of data
+                        // Determine where to insert the layer - always before counties-outline to keep county boundary on top
+                        // This ensures the layer order is: data layers -> county outline -> overlay layers
                         let insertBeforeLayer = null;
-                        const overlayLayerIds = ['subregions-outline'];
-                        for (const overlayId of overlayLayerIds) {
-                            if (map.getLayer(overlayId)) {
-                                insertBeforeLayer = overlayId;
-                                break;
-                            }
-                        }
-                        // Fallback to counties-outline if no overlays exist
-                        if (!insertBeforeLayer && map.getLayer('counties-outline')) {
+                        if (map.getLayer('counties-outline')) {
                             insertBeforeLayer = 'counties-outline';
                         }
 
