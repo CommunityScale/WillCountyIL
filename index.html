@@ -224,7 +224,8 @@
     const TILESETS = {
         counties: 'communityscale.counties',
         tracts: 'communityscale.tracts-2020',
-        zipcodes: 'communityscale.zipcodes'
+        zipcodes: 'communityscale.zipcodes',
+        muni: 'communityscale.place'
     };
 
     // Color palette (darkest to lightest, darkest = highest values)
@@ -495,7 +496,6 @@
                 }
             })
             .catch(error => console.error('Error fetching zip tileset metadata:', error));
-
 
         // Load tract data from JSON
         fetch('CTs_USA_251016')
