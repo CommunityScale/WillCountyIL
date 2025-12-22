@@ -124,6 +124,7 @@
                             <option value="tract:total_cb_rt_23">Total cost burden rate (2023)</option>
                             <option value="tract:hh_change_23_20">Household change 2020-2023 (%)</option>
                             <option value="tract:median_hh_income_23">Median household income (2023)</option>
+                            <option value="tract:commute_gt45mins_sh_23">Share of population commuting 45+ minutes (2023)</option>
                             <!-- <option value="tract:pop_23">Population (2023)</option> -->
                             <!-- <option value="tract:housing_unit_count_23">Housing unit count (2023)</option> -->
                             <!-- <option value="tract:total_hh_23">Total households (2023)</option> -->
@@ -312,6 +313,9 @@
             source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)'
         },
         'tract:total_hh_23': {
+            source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)'
+        },
+        'tract:commute_gt45mins_sh_23': {
             source: 'U.S. Census Bureau, American Community Survey 5-Year Estimates (2019-2023)'
         },
         'zip:zhvi_20': {
@@ -574,11 +578,11 @@
         console.log('Added subregions overlay layer');
 
         // Load tract data from JSON
-        fetch('CTs_USA_251016')
+        fetch('USA_CTs_251222.json')
             .then(response => {
                 console.log('Fetch response status:', response.status);
                 if (!response.ok) {
-                    throw new Error('Failed to load CTs_USA_251016: ' + response.status);
+                    throw new Error('Failed to load CTs_USA_251222: ' + response.status);
                 }
                 return response.json();
             })
@@ -605,7 +609,7 @@
             });
 
         // Load zip code data from JSON
-        fetch('Zips_Illinois_Zillow_251016.json')
+        fetch('Zips_Illinois_251222') //check to see if this works..
             .then(response => response.json())
             .then(data => {
                 zipData = data;
@@ -1022,7 +1026,7 @@
 
         // Format values based on attribute type
         function formatValue(val) {
-            if (attribute.includes('pct') || attribute.includes('_rt_') || attribute.includes('rate') || attribute.includes('change')) {
+            if (attribute.includes('pct') || attribute.includes('_rt_') || attribute.includes('rate') || attribute.includes('change') || attribute.includes('_sh_')) {
                 return Math.round(val * 100) + '%';
             } else if (attribute.includes('income') || attribute.includes('zhvi')) {
                 return '$' + (Math.round(val / 100) * 100).toLocaleString();
@@ -1419,7 +1423,7 @@
                 const value = dataInfo[attribute];
                 let formattedValue, caption;
 
-                if (attribute.includes('pct') || attribute.includes('_rt_') || attribute.includes('rate') || attribute.includes('change')) {
+                if (attribute.includes('pct') || attribute.includes('_rt_') || attribute.includes('rate') || attribute.includes('change') || attribute.includes('_sh_')) {
                     formattedValue = Math.round(value * 100) + '%';
                 } else if (attribute.includes('income') || attribute.includes('zhvi')) {
                     formattedValue = '$' + (Math.round(value / 100) * 100).toLocaleString();
@@ -1446,6 +1450,9 @@
                         break;
                     case 'pop_23':
                         caption = `Population is ${formattedValue}.`;
+                        break;
+                    case 'commute_gt45mins_sh_23':
+                        caption = `${formattedValue} of the resident workforce commute 45 minutes or more.`;
                         break;
                     case 'housing_unit_count_23':
                         caption = `${formattedValue} housing units.`;
